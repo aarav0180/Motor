@@ -1,0 +1,16 @@
+{
+  "name": "VibraGuard // Edge AI Motor Sentinel",
+  "short_name": "VibraGuard",
+  "description": "Real-time edge vibration predictive maintenance & anomaly detection",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#0a0f1d",
+  "theme_color": "#06b6d4",
+  "icons": [
+    {
+      "src": "/favicon.ico",
+      "sizes": "64x64 32x32 24x24 16x16",
+      "type": "image/x-icon"
+    }
+  ]
+}

@@ -1,0 +1,94 @@
+/**
+ * client/css/styles.css — Industrial Cyber-Physical Styles for VibraGuard
+ */
+
+:root {
+  --bg-deep: #0a0f1d;
+  --surface: #11192d;
+  --surface-border: #1e293b;
+  --cyan-accent: #06b6d4;
+  --emerald-normal: #10b981;
+  --amber-warning: #f59e0b;
+  --crimson-fault: #ef4444;
+}
+
+body {
+  background-color: var(--bg-deep);
+  color: #f8fafc;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  overflow-x: hidden;
+}
+
+/* Tabular Numbers: Prevents numbers from jumping during high-frequency live stream */
+.tabular-nums {
+  font-variant-numeric: tabular-nums;
+  font-feature-settings: "tnum";
+}
+
+/* Glassmorphism Card Style */
+.glass-card {
+  background: rgba(17, 25, 45, 0.75);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border: 1px solid rgba(30, 41, 59, 0.8);
+}
+
+.glass-card-interactive {
+  transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.glass-card-interactive:hover {
+  border-color: rgba(6, 182, 212, 0.4);
+  transform: translateY(-1px);
+}
+
+/* Pulse Animations for Beacon Status */
+@keyframes beacon-pulse {
+  0% {
+    box-shadow: 0 0 0 0 rgba(16, 185, 129, 0.7);
+  }
+  70% {
+    box-shadow: 0 0 0 8px rgba(16, 185, 129, 0);
+  }
+  100% {
+    box-shadow: 0 0 0 0 rgba(16, 185, 129, 0);
+  }
+}
+
+.pulse-emerald {
+  animation: beacon-pulse 2s infinite;
+}
+
+@keyframes critical-pulse {
+  0%, 100% {
+    border-color: rgba(239, 68, 68, 0.9);
+    box-shadow: 0 0 15px rgba(239, 68, 68, 0.3);
+  }
+  50% {
+    border-color: rgba(239, 68, 68, 0.3);
+    box-shadow: 0 0 5px rgba(239, 68, 68, 0.1);
+  }
+}
+
+.pulse-critical {
+  animation: critical-pulse 1.5s infinite;
+}
+
+/* Custom Scrollbar for Industrial Log Drawers */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: #0a0f1d;
+}
+
+::-webkit-scrollbar-thumb {
+  background: #1e293b;
+  border-radius: 3px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: #06b6d4;
+}

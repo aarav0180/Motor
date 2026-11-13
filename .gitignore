@@ -1,0 +1,33 @@
+# Python bytecode & cache
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.pytest_cache/
+.coverage
+htmlcov/
+
+# Environments
+venv/
+.venv/
+env/
+ENV/
+
+# Local database & temp runtime files
+data/server_telemetry.db
+data/server_telemetry.db-wal
+data/server_telemetry.db-shm
+*.db
+*.sqlite3
+
+# OS / Editor files
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Mosquitto local persistence
+mosquitto-data/
+/mosquitto/data/

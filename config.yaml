@@ -1,0 +1,53 @@
+# Sensor configuration
+sensor:
+  type: mock                       # 'physical' on the Pi, 'mock' on laptop
+  bus: 1                           # I2C bus number (Raspberry Pi = 1)
+  address: "0x53"                  # ADXL345 default; MPU6050 use "0x68"
+  sample_rate: 1000                # Target Hz (measure actual rate on the Pi!)
+  mock_data_path: data/raw/healthy_sample.npy  # used when type=mock
+  simulate_delay: false            # true to slow mock down to real-time
+
+# Motor / rig parameters
+motor:
+  run_frequencies:                 # Hz at each speed setting (measure these!)
+    low: 25.0
+    medium: 40.0
+    high: 55.0
+  active_speed: medium             # which speed is currently running
+
+# Detector configuration
+detector:
+  active: unsupervised_autoencoder     # rms_threshold | isolation_forest | autoencoder | unsupervised_autoencoder | advanced_classifier | hybrid_edge
+  alert_threshold: 0.05                # calibrated baseline threshold (0.05 for unsupervised MSE)
+  models_dir: detectors/saved
+  model_path: models/cwru_unsupervised_xiong_edge.pt
+  unsupervised_path: models/cwru_unsupervised_xiong_edge.pt
+  classifier_path: models/cwru_advanced_edge.pt
+
+# Feature extraction
+features:
+  n_harmonics: 3                   # number of FFT harmonic bands
+  band_width_hz: 5.0               # full width of each band in Hz
+
+# MQTT broker
+mqtt:
+  broker: localhost
+  port: 1883
+  username: null                      # set for cloud brokers (e.g. HiveMQ)
+  password: null                      # set for cloud brokers
+  use_tls: false                      # true for TLS (port 8883 on HiveMQ)
+  topic_health: motor/health
+  topic_alert: motor/alert
+  topic_config: motor/config/threshold
+  topic_sensor_config: motor/config/sensor
+
+# Data paths
+data:
+  raw_dir: data/raw/
+  cwru_dir: data/cwru/
+  processed_dir: data/processed/
+  window_seconds: 10
+
+# Logging
+logging:
+  level: INFO                      # DEBUG | INFO | WARNING | ERROR

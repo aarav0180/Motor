@@ -1,0 +1,38 @@
+version: "3.8"
+
+services:
+  # ── Eclipse Mosquitto MQTT Broker (TCP 1883 + WebSockets 9001) ───────────
+  mosquitto:
+    image: eclipse-mosquitto:2.0
+    container_name: vibraguard-mqtt
+    restart: unless-stopped
+    ports:
+      - "1883:1883"   # Native TCP for Edge Pi
+      - "9001:9001"   # WebSockets for Web/Mobile
+    volumes:
+      - ./server/mosquitto.conf:/mosquitto/config/mosquitto.conf:ro
+      - mosquitto-data:/mosquitto/data
+
+  # ── Tier 2 Backend Server + Tier 3 Web Client (FastAPI + PWA) ─────────────
+  server:
+    build:
+      context: .
+      dockerfile: server/Dockerfile
+    container_name: vibraguard-server
+    restart: unless-stopped
+    ports:
+      - "8000:8000"
+    environment:
+      - MQTT_BROKER=mosquitto
+      - MQTT_PORT=1883
+      - MQTT_USE_TLS=false
+      - SERVER_HOST=0.0.0.0
+      - SERVER_PORT=8000
+    depends_on:
+      - mosquitto
+    volumes:
+      - server-data:/app/data
+
+volumes:
+  mosquitto-data:
+  server-data:

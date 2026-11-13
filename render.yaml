@@ -1,0 +1,39 @@
+# ==============================================================================
+# Render.com Infrastructure-as-Code Blueprint
+# 100% Free Tier Deployment for VibraGuard Tier 2 Backend & Tier 3 Web Client
+# ==============================================================================
+
+services:
+  - type: web
+    name: vibraguard-sentinel
+    runtime: python
+    plan: free
+    region: oregon # or frankfurt, singapore
+    buildCommand: pip install -r requirements-server.txt
+    startCommand: uvicorn server.main:app --host 0.0.0.0 --port $PORT
+    healthCheckPath: /health
+    autoDeploy: true
+
+    envVars:
+      - key: PYTHON_VERSION
+        value: 3.11.9
+
+      # MQTT Broker Connection (Connects to Free HiveMQ Cloud over TLS)
+      - key: MQTT_BROKER
+        sync: false # Set in Render Dashboard (e.g. xxx.s1.eu.hivemq.cloud)
+
+      - key: MQTT_PORT
+        value: "8883"
+
+      - key: MQTT_USE_TLS
+        value: "true"
+
+      - key: MQTT_USERNAME
+        sync: false # Set in Render Dashboard
+
+      - key: MQTT_PASSWORD
+        sync: false # Set in Render Dashboard
+
+      # Optional CORS & Host overrides
+      - key: CORS_ORIGINS
+        value: "*"
