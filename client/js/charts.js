@@ -16,8 +16,8 @@ class TelemetryChart {
 
     // Create subtle gradient for under the curve
     const gradient = ctx.createLinearGradient(0, 0, 0, 300);
-    gradient.addColorStop(0, "rgba(6, 182, 212, 0.25)");
-    gradient.addColorStop(1, "rgba(6, 182, 212, 0.0)");
+    gradient.addColorStop(0, "rgba(49, 95, 232, 0.16)");
+    gradient.addColorStop(1, "rgba(49, 95, 232, 0.0)");
 
     this.chart = new Chart(ctx, {
       type: "line",
@@ -27,7 +27,7 @@ class TelemetryChart {
           {
             label: "Anomaly Score",
             data: [],
-            borderColor: "#06b6d4",
+            borderColor: "#315fe8",
             backgroundColor: gradient,
             borderWidth: 2,
             tension: 0.3,
@@ -38,13 +38,13 @@ class TelemetryChart {
             },
             pointBackgroundColor: (ctx) => {
               const val = ctx.raw;
-              return val > this.currentThreshold ? "#ef4444" : "#06b6d4";
+              return val > this.currentThreshold ? "#c33c4e" : "#315fe8";
             },
           },
           {
             label: "Threshold (τ)",
             data: [],
-            borderColor: "#f43f5e",
+            borderColor: "#d9969b",
             borderWidth: 1.5,
             borderDash: [6, 4],
             fill: false,
@@ -60,24 +60,26 @@ class TelemetryChart {
         plugins: {
           legend: {
             display: true,
-            labels: { color: "#94a3b8", boxWidth: 14, font: { size: 11 } },
+            labels: { color: "#7782a0", boxWidth: 14, font: { family: "DM Sans", size: 10 } },
           },
           tooltip: {
-            backgroundColor: "rgba(15, 23, 42, 0.9)",
-            borderColor: "#334155",
+            backgroundColor: "rgba(20, 31, 64, 0.95)",
+            borderColor: "#314f9f",
             borderWidth: 1,
-            titleColor: "#f8fafc",
-            bodyColor: "#94a3b8",
+            titleColor: "#ffffff",
+            bodyColor: "#d5def5",
           },
         },
         scales: {
           x: {
-            grid: { color: "rgba(30, 41, 59, 0.5)" },
-            ticks: { color: "#64748b", maxTicksLimit: 8, font: { size: 10 } },
+            grid: { color: "rgba(30, 48, 95, 0.07)" },
+            border: { display: false },
+            ticks: { color: "#929bb0", maxTicksLimit: 8, font: { family: "DM Sans", size: 9 } },
           },
           y: {
-            grid: { color: "rgba(30, 41, 59, 0.5)" },
-            ticks: { color: "#64748b", font: { size: 10 } },
+            grid: { color: "rgba(30, 48, 95, 0.07)" },
+            border: { display: false },
+            ticks: { color: "#929bb0", font: { family: "DM Sans", size: 9 } },
             suggestedMin: 0.0,
             suggestedMax: 0.1,
           },

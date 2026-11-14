@@ -4,8 +4,8 @@
   "description": "Real-time edge vibration predictive maintenance & anomaly detection",
   "start_url": "/",
   "display": "standalone",
-  "background_color": "#0a0f1d",
-  "theme_color": "#06b6d4",
+  "background_color": "#ffffff",
+  "theme_color": "#315fe8",
   "icons": [
     {
       "src": "/favicon.ico",
