@@ -10,7 +10,7 @@ document.addEventListener("DOMContentLoaded", () => {
 class VibraGuardApp {
   constructor() {
     this.chart = new TelemetryChart("telemetryChart");
-    this.activeThreshold = 0.0506;
+    this.activeThreshold = 0.08000;
     this.lastPacketTimestamp = null;
     this.selectedAlert = null;
     this.alertsList = [];

@@ -60,7 +60,7 @@ class ServerSettings:
         self.database_path: str = os.getenv("DATABASE_PATH", default_db)
 
         # Baseline threshold
-        self.default_threshold: float = float(det_cfg.get("alert_threshold") or 0.05)
+        self.default_threshold: float = float(det_cfg.get("alert_threshold") or 0.08)
 
 
 settings = ServerSettings()

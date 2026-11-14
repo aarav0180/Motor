@@ -112,14 +112,20 @@ def init_db(db_path: Optional[str] = None) -> None:
         """)
         conn.execute("CREATE INDEX IF NOT EXISTS idx_push_endpoint ON push_subscriptions(endpoint);")
 
-        # Seed initial alert threshold if not set
+        # Seed initial alert threshold if not set, or upgrade old default (0.05) to 0.08
         cur = conn.cursor()
         cur.execute("SELECT value FROM system_config WHERE key = 'alert_threshold'")
-        if not cur.fetchone():
-            now = time.time()
+        row = cur.fetchone()
+        now = time.time()
+        if not row:
             cur.execute(
                 "INSERT INTO system_config (key, value, updated_at) VALUES (?, ?, ?)",
                 ("alert_threshold", str(settings.default_threshold), now),
+            )
+        elif float(row["value"]) < 0.079:
+            cur.execute(
+                "UPDATE system_config SET value = ?, updated_at = ? WHERE key = 'alert_threshold'",
+                (str(settings.default_threshold), now),
             )
     logger.info("Initialized database schema at %s", db_path or settings.database_path)
 
