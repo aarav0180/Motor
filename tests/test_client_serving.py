@@ -35,9 +35,10 @@ class TestClientServing:
         res = client.get("/")
         assert res.status_code == 200
         assert "text/html" in res.headers["content-type"]
-        assert "VIBRA-GUARD" in res.text
+        assert "VibraGuard" in res.text
         assert "telemetryChart" in res.text
         assert "hitlModal" in res.text
+        assert 'src="/js/scene.js"' in res.text
 
     def test_pwa_manifest_serving(self, client):
         res = client.get("/manifest.json")
@@ -55,7 +56,7 @@ class TestClientServing:
     def test_css_styles_serving(self, client):
         res = client.get("/css/styles.css")
         assert res.status_code == 200
-        assert "pulse-critical" in res.text
+        assert ".hero-card.is-critical" in res.text
 
     def test_all_js_modules_served(self, client):
         modules = [
@@ -66,6 +67,7 @@ class TestClientServing:
             "charts.js",
             "push.js",
             "app.js",
+            "scene.js",
         ]
         for mod in modules:
             res = client.get(f"/js/{mod}")
