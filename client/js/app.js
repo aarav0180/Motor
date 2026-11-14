@@ -16,6 +16,7 @@ class VibraGuardApp {
     this.alertsList = [];
     this.activeFilter = "unreviewed"; // 'all' or 'unreviewed'
     this.sensorMode = "mock";
+    this.activeModel = "unsupervised";
   }
 
   async init() {
@@ -58,6 +59,10 @@ class VibraGuardApp {
         if (config.sensor_mode) {
           this.sensorMode = config.sensor_mode;
           this._updateSensorModeUI(this.sensorMode);
+        }
+        if (config.active_model) {
+          this.activeModel = config.active_model;
+          this._updateModelUI(this.activeModel);
         }
       }
 
@@ -112,6 +117,14 @@ class VibraGuardApp {
       audioManager.playAlertChime();
       this.refreshAlerts();
       this.openFeedbackModal(data);
+      if ("Notification" in window && Notification.permission === "granted") {
+        try {
+          new Notification("🚨 MOTOR ANOMALY ALERT", {
+            body: data.message || `Bearing anomaly score: ${Number(data.score).toFixed(4)}`,
+            icon: "/manifest.json",
+          });
+        } catch (_) {}
+      }
     };
 
     wsClient.onConfigUpdate = (data) => {
@@ -125,6 +138,11 @@ class VibraGuardApp {
         this.sensorMode = data.sensor_mode;
         this._updateSensorModeUI(this.sensorMode);
         this._showToast(`Sensor switched to ${this.sensorMode.toUpperCase()} mode`);
+      }
+      if (data && data.active_model) {
+        this.activeModel = data.active_model;
+        this._updateModelUI(this.activeModel);
+        this._showToast(`Model switched to ${this.activeModel.toUpperCase()}`);
       }
     };
 
@@ -226,6 +244,31 @@ class VibraGuardApp {
       this._showToast(`Sensor switched to ${mode.toUpperCase()} mode (MQTT: ${res.mqtt_broadcast ? "OK" : "Pending"})`);
     } catch (e) {
       alert(`Could not change sensor mode: ${e.message}`);
+    }
+  }
+
+  _updateModelUI(model) {
+    const unsupBtn = document.getElementById("modelModeUnsupBtn");
+    const superBtn = document.getElementById("modelModeSuperBtn");
+    if (!unsupBtn || !superBtn) return;
+
+    if (model === "supervised") {
+      superBtn.className = "px-2.5 py-1 rounded-lg font-bold text-xs bg-amber-400 text-black transition-all shadow-sm";
+      unsupBtn.className = "px-2.5 py-1 rounded-lg font-bold text-xs text-slate-400 hover:text-slate-200 transition-all";
+    } else {
+      unsupBtn.className = "px-2.5 py-1 rounded-lg font-bold text-xs bg-emerald-500 text-black transition-all shadow-sm";
+      superBtn.className = "px-2.5 py-1 rounded-lg font-bold text-xs text-slate-400 hover:text-slate-200 transition-all";
+    }
+  }
+
+  async setModelMode(model) {
+    try {
+      const res = await Api.setModelMode(model);
+      this.activeModel = model;
+      this._updateModelUI(model);
+      this._showToast(`Edge model switched to ${model.toUpperCase()} (MQTT: ${res.mqtt_broadcast ? "OK" : "Pending"})`);
+    } catch (e) {
+      alert(`Could not change model: ${e.message}`);
     }
   }
 
@@ -468,17 +511,45 @@ class VibraGuardApp {
       } else {
         await pushManager.subscribe();
         this._updatePushBtn(true);
-        this._showToast("Subscribed! You will receive lockscreen alerts when anomalies occur.");
+        this._showToast("✓ Subscribed! You will now receive background alerts.");
+        // Prompt immediate local notification confirmation
+        if ("Notification" in window && Notification.permission === "granted") {
+          try {
+            new Notification("🔔 VibraGuard Push Alerts Active", {
+              body: "Device registered for real-time bearing anomaly warnings.",
+              icon: "/manifest.json",
+            });
+          } catch (_) {}
+        }
       }
     } catch (err) {
-      alert(`Push Notification setup error: ${err.message}`);
+      console.error("[App] Push subscription error:", err);
+      alert(`Push Notification: ${err.message}`);
     }
   }
 
   async testPushChime() {
     try {
-      await Api.triggerTestPush();
-      this._showToast("Test push dispatched!");
+      // 1. Play synthesized audio chime immediately
+      audioManager.playAlertChime();
+
+      // 2. Display local browser notification if permitted
+      if ("Notification" in window && Notification.permission === "granted") {
+        try {
+          new Notification("🚨 TEST MOTOR ALERT", {
+            body: "Vibration threshold breach simulated! Hardware alarm active.",
+            icon: "/manifest.json",
+          });
+        } catch (_) {}
+      }
+
+      // 3. Dispatch web push to all registered endpoints on server
+      const res = await Api.triggerTestPush();
+      if (res && res.subscribers_queued === 0) {
+        this._showToast("⚠️ Device not subscribed yet. Click '🔔 Enable Push' above to register your browser!", 5000);
+      } else {
+        this._showToast(`🚀 Cloud push dispatched to ${res.subscribers_queued || 1} device(s)!`);
+      }
     } catch (e) {
       alert(`Test push error: ${e.message}`);
     }
@@ -501,6 +572,12 @@ class VibraGuardApp {
     const physBtn = document.getElementById("sensorModePhysicalBtn");
     if (mockBtn) mockBtn.addEventListener("click", () => this.setSensorMode("mock"));
     if (physBtn) physBtn.addEventListener("click", () => this.setSensorMode("physical"));
+
+    // Model Mode Toggle Buttons
+    const unsupBtn = document.getElementById("modelModeUnsupBtn");
+    const superBtn = document.getElementById("modelModeSuperBtn");
+    if (unsupBtn) unsupBtn.addEventListener("click", () => this.setModelMode("unsupervised"));
+    if (superBtn) superBtn.addEventListener("click", () => this.setModelMode("supervised"));
 
     // Push Toggle Button
     const pushBtn = document.getElementById("pushToggleBtn");

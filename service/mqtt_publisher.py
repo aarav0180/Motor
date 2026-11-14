@@ -50,6 +50,7 @@ class MQTTPublisher:
         topic_alert: str = "motor/alert",
         topic_config: Optional[str] = "motor/config/threshold",
         topic_sensor_config: Optional[str] = "motor/config/sensor",
+        topic_model_config: Optional[str] = "motor/config/model",
         client_id: str = "motor-fault-detector",
         keepalive: int = 60,
         username: Optional[str] = None,
@@ -57,6 +58,7 @@ class MQTTPublisher:
         use_tls: bool = False,
         on_config_message: Optional[Callable[[Dict[str, Any]], None]] = None,
         on_sensor_config_message: Optional[Callable[[Dict[str, Any]], None]] = None,
+        on_model_config_message: Optional[Callable[[Dict[str, Any]], None]] = None,
     ) -> None:
         self.broker                   = broker
         self.port                     = port
@@ -64,12 +66,14 @@ class MQTTPublisher:
         self.topic_alert              = topic_alert
         self.topic_config             = topic_config
         self.topic_sensor_config      = topic_sensor_config
+        self.topic_model_config       = topic_model_config
         self.keepalive                = keepalive
         self.username                 = username
         self.password                 = password
         self.use_tls                  = use_tls
         self.on_config_message        = on_config_message
         self.on_sensor_config_message = on_sensor_config_message
+        self.on_model_config_message  = on_model_config_message
 
         try:
             import paho.mqtt.client as mqtt
@@ -188,6 +192,9 @@ class MQTTPublisher:
             if self.topic_sensor_config:
                 self._client.subscribe(self.topic_sensor_config, qos=1)
                 logger.info("Subscribed to sensor config topic: %s", self.topic_sensor_config)
+            if self.topic_model_config:
+                self._client.subscribe(self.topic_model_config, qos=1)
+                logger.info("Subscribed to model config topic: %s", self.topic_model_config)
         else:
             logger.error("MQTT connection failed with code %d", rc)
 
@@ -217,6 +224,19 @@ class MQTTPublisher:
                     self.on_sensor_config_message(payload)
             except Exception as exc:
                 logger.error("Error processing sensor mode message from %s: %s", msg.topic, exc)
+
+        elif self.topic_model_config and msg.topic == self.topic_model_config:
+            try:
+                raw_payload = msg.payload.decode()
+                try:
+                    payload = json.loads(raw_payload)
+                except json.JSONDecodeError:
+                    payload = {"model": raw_payload.strip()}
+                logger.info("Received remote model config on %s: %s", msg.topic, payload)
+                if self.on_model_config_message:
+                    self.on_model_config_message(payload)
+            except Exception as exc:
+                logger.error("Error processing model config message from %s: %s", msg.topic, exc)
 
     def _on_disconnect(self, client, userdata, rc) -> None:
         self._connected = False

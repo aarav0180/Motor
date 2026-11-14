@@ -65,6 +65,17 @@
           </button>
         </div>
 
+        <!-- Edge Model Selector (UNSUPERVISED vs SUPERVISED) -->
+        <div class="flex items-center gap-1 bg-slate-900/90 p-1 rounded-xl border border-slate-800 text-xs">
+          <span class="text-[10px] text-slate-500 uppercase font-mono px-1">Model:</span>
+          <button id="modelModeUnsupBtn" class="px-2.5 py-1 rounded-lg font-bold text-xs bg-emerald-600 text-black transition-all">
+            UNSUPERVISED (AE)
+          </button>
+          <button id="modelModeSuperBtn" class="px-2.5 py-1 rounded-lg font-bold text-xs text-slate-400 hover:text-slate-200 transition-all">
+            SUPERVISED (CNN)
+          </button>
+        </div>
+
         <button id="audioToggleBtn" class="px-3 py-1.5 rounded-xl text-xs font-medium bg-slate-900 hover:bg-slate-800 text-slate-300 border border-slate-800 transition-all">
           🔊 Audio On
         </button>

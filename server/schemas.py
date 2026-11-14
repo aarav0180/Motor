@@ -62,16 +62,26 @@ class SensorModeRequest(BaseModel):
     reason: Optional[str] = Field(default="web_ui_toggle", description="Reason for mode switch")
 
 
+class ModelModeRequest(BaseModel):
+    """Request to switch active edge detector model between unsupervised autoencoder and supervised classifier."""
+    model: Literal["unsupervised", "supervised"] = Field(
+        ..., description="'unsupervised' for 1D-CNN Autoencoder, 'supervised' for 1D-CNN Classifier"
+    )
+    reason: Optional[str] = Field(default="web_ui_model_toggle", description="Reason for model switch")
+
+
 class ConfigResponse(BaseModel):
     """Current system parameters."""
     alert_threshold: float
     sensor_mode: str = "mock"
+    active_model: str = "unsupervised"
     mqtt_broker: str
     mqtt_port: int
     topic_health: str
     topic_alert: str
     topic_config: str
     topic_sensor_config: str = "motor/config/sensor"
+    topic_model_config: str = "motor/config/model"
 
 
 class ServerHealthResponse(BaseModel):

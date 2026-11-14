@@ -40,6 +40,7 @@ mqtt:
   topic_alert: motor/alert
   topic_config: motor/config/threshold
   topic_sensor_config: motor/config/sensor
+  topic_model_config: motor/config/model
 
 # Data paths
 data:

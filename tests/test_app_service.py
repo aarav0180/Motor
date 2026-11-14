@@ -267,3 +267,35 @@ class TestMonitorServiceIntegration:
             # 2. Simulate incoming MQTT sensor mode message
             service._handle_sensor_config({"sensor_mode": "mock", "reason": "web_ui_test"})
             assert service.cfg["sensor"]["type"] == "mock"
+
+    def test_monitor_service_remote_model_switch(self, tmp_path):
+        raw_file = tmp_path / "healthy.npy"
+        np.save(str(raw_file), np.random.randn(1000).astype(np.float32))
+
+        config_path = tmp_path / "test_config.yaml"
+        cfg_dict = {
+            "sensor": {"type": "mock", "mock_data_path": str(raw_file), "sample_rate": 1000},
+            "motor": {"run_frequencies": {"medium": 40.0}},
+            "detector": {
+                "active": "unsupervised_autoencoder",
+                "model_path": "models/cwru_unsupervised_xiong_edge.pt",
+                "classifier_path": "models/cwru_advanced_edge.pt",
+                "alert_threshold": 0.05,
+            },
+            "mqtt": {"broker": "localhost", "topic_health": "h", "topic_alert": "a", "topic_config": "c", "topic_sensor_config": "s", "topic_model_config": "m"},
+        }
+        import yaml
+        with open(config_path, "w") as f:
+            yaml.dump(cfg_dict, f)
+
+        with patch("paho.mqtt.client.Client"):
+            service = MonitorService(config_path=str(config_path), force_mock=True)
+
+            # 1. Switch to supervised classifier
+            success = service.set_model_mode("supervised")
+            assert success is True
+            assert service.cfg["detector"]["active"] == "advanced_classifier"
+
+            # 2. Switch back to unsupervised autoencoder via incoming message
+            service._handle_model_config({"model": "unsupervised"})
+            assert service.cfg["detector"]["active"] == "unsupervised_autoencoder"

@@ -20,6 +20,7 @@ import uvicorn
 from .config import settings
 from .database import init_db
 from .mqtt_bridge import mqtt_bridge
+from .mock_streamer import mock_streamer
 from .ws_manager import ws_manager
 from .routes import health, telemetry, alerts, feedback, config, push
 
@@ -45,9 +46,16 @@ async def lifespan(app: FastAPI):
     logger.info("Starting MQTT Bridge worker...")
     mqtt_bridge.start()
 
+    # 4. Start background Mock Edge Streamer (continuous telemetry in mock mode)
+    logger.info("Starting Mock Edge Streamer worker...")
+    mock_streamer.start()
+
     yield
 
-    # 4. Graceful shutdown
+    # 5. Graceful shutdown
+    logger.info("Stopping Mock Edge Streamer worker...")
+    mock_streamer.stop()
+
     logger.info("Stopping MQTT Bridge worker...")
     mqtt_bridge.stop()
 

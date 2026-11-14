@@ -6,7 +6,7 @@ from fastapi import APIRouter
 from ..config import settings
 from ..database import get_config, set_config
 from ..mqtt_bridge import mqtt_bridge
-from ..schemas import ConfigResponse, ThresholdUpdateRequest, SensorModeRequest
+from ..schemas import ConfigResponse, ThresholdUpdateRequest, SensorModeRequest, ModelModeRequest
 
 router = APIRouter(prefix="/api/v1/config", tags=["Configuration"])
 
@@ -16,15 +16,18 @@ def get_system_config():
     """Retrieve active system parameters and detection thresholds."""
     current_thresh = float(get_config("alert_threshold", settings.default_threshold))
     current_sensor_mode = str(get_config("sensor_mode", settings.default_sensor_mode))
+    current_model = str(get_config("active_model", settings.default_model))
     return ConfigResponse(
         alert_threshold=current_thresh,
         sensor_mode=current_sensor_mode,
+        active_model=current_model,
         mqtt_broker=settings.mqtt_broker,
         mqtt_port=settings.mqtt_port,
         topic_health=settings.topic_health,
         topic_alert=settings.topic_alert,
         topic_config=settings.topic_config,
         topic_sensor_config=settings.topic_sensor_config,
+        topic_model_config=settings.topic_model_config,
     )
 
 
@@ -57,4 +60,21 @@ def set_sensor_mode(req: SensorModeRequest):
         "sensor_mode": mode,
         "mqtt_broadcast": broadcast_ok,
         "message": f"Sensor mode updated to {mode}.",
+    }
+
+
+@router.post("/model")
+def set_model_mode(req: ModelModeRequest):
+    """Switch active edge detector model between unsupervised autoencoder and supervised classifier."""
+    model = req.model
+    set_config("active_model", model)
+    broadcast_ok = mqtt_bridge.publish_model_mode_update(
+        model=model,
+        reason=req.reason or "web_ui_model_toggle",
+    )
+    return {
+        "status": "success",
+        "active_model": model,
+        "mqtt_broadcast": broadcast_ok,
+        "message": f"Edge detection model switched to {model}.",
     }

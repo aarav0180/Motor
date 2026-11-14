@@ -77,6 +77,13 @@ const Api = {
     });
   },
 
+  setModelMode(model) {
+    return this.request("/api/v1/config/model", {
+      method: "POST",
+      body: JSON.stringify({ model }),
+    });
+  },
+
   // Web Push Subscriptions
   getVapidPublicKey() {
     return this.request("/api/v1/push/key");

@@ -34,6 +34,7 @@ class MQTTBridge:
         topic_alert: Optional[str] = None,
         topic_config: Optional[str] = None,
         topic_sensor_config: Optional[str] = None,
+        topic_model_config: Optional[str] = None,
         client_id: str = "motor-cloud-server",
         username: Optional[str] = None,
         password: Optional[str] = None,
@@ -45,6 +46,7 @@ class MQTTBridge:
         self.topic_alert = topic_alert or settings.topic_alert
         self.topic_config = topic_config or settings.topic_config
         self.topic_sensor_config = topic_sensor_config or settings.topic_sensor_config
+        self.topic_model_config = topic_model_config or settings.topic_model_config
         self.client_id = client_id
         self.username = username or settings.mqtt_username
         self.password = password or settings.mqtt_password
@@ -170,6 +172,39 @@ class MQTTBridge:
             return True
         except Exception as exc:
             logger.error("Failed to publish sensor mode update: %s", exc)
+            return False
+
+    def publish_model_mode_update(
+        self,
+        model: str,
+        reason: str = "web_ui_model_toggle",
+    ) -> bool:
+        """
+        Broadcast model selection ('unsupervised' vs 'supervised') to Edge daemon over MQTT.
+        Allows hot-swapping between Xiong Autoencoder and Advanced 1D-CNN from the Web UI.
+        """
+        payload = {
+            "model": model,
+            "reason": reason,
+            "ts": time.time(),
+        }
+        # Notify WebSocket clients immediately
+        ws_manager.broadcast_sync({
+            "type": "CONFIG_UPDATE",
+            "data": {"active_model": model, "reason": reason},
+        })
+
+        if self._client is None or not self._connected:
+            logger.warning("MQTT not connected; stored model %s locally, but could not push to %s", model, self.topic_model_config)
+            return False
+
+        try:
+            info = self._client.publish(self.topic_model_config, json.dumps(payload), qos=1, retain=True)
+            info.wait_for_publish(timeout=2.0)
+            logger.info("Broadcasted model mode down to Edge on %s: %s", self.topic_model_config, model)
+            return True
+        except Exception as exc:
+            logger.error("Failed to publish model mode update: %s", exc)
             return False
 
     # ------------------------------------------------------------------

@@ -19,7 +19,9 @@ def setup_test_environment(tmp_path):
     db_file = str(tmp_path / "api_test.db")
     settings.database_path = db_file
     init_db(db_file)
-    with patch("server.mqtt_bridge.mqtt_bridge.start"), patch("server.mqtt_bridge.mqtt_bridge.stop"):
+    with patch("server.main.mqtt_bridge.start"), patch("server.main.mqtt_bridge.stop"), \
+         patch("server.mqtt_bridge.mqtt_bridge.start"), patch("server.mqtt_bridge.mqtt_bridge.stop"), \
+         patch("server.main.mock_streamer.start"), patch("server.main.mock_streamer.stop"):
         yield
 
 
@@ -182,4 +184,24 @@ class TestConfigEndpoints:
 
             # 3. Invalid mode rejected by Pydantic validation
             bad_resp = client.post("/api/v1/config/sensor-mode", json={"mode": "invalid_mode"})
+            assert bad_resp.status_code == 422
+
+    def test_switch_model_mode_endpoint(self, client):
+        with patch("server.mqtt_bridge.mqtt_bridge.publish_model_mode_update") as mock_pub:
+            mock_pub.return_value = True
+
+            # 1. Switch to supervised classifier
+            resp = client.post("/api/v1/config/model", json={"model": "supervised"})
+            assert resp.status_code == 200
+            assert resp.json()["active_model"] == "supervised"
+            assert mock_pub.called
+            assert mock_pub.call_args[1]["model"] == "supervised"
+
+            # 2. Verify GET /config reflects new model mode
+            cfg_resp = client.get("/api/v1/config")
+            assert cfg_resp.status_code == 200
+            assert cfg_resp.json()["active_model"] == "supervised"
+
+            # 3. Invalid model mode rejected
+            bad_resp = client.post("/api/v1/config/model", json={"model": "unsupported_detector"})
             assert bad_resp.status_code == 422

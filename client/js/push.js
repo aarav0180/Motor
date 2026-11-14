@@ -17,6 +17,7 @@ class PushManager {
 
     try {
       this.swRegistration = await navigator.serviceWorker.register("/sw.js");
+      await navigator.serviceWorker.ready;
       this.subscription = await this.swRegistration.pushManager.getSubscription();
       return !!this.subscription;
     } catch (err) {
@@ -37,25 +38,40 @@ class PushManager {
   }
 
   async subscribe() {
+    if (!this.isSupported) {
+      throw new Error("Web Push is not supported in this browser.");
+    }
+
+    // 1. Explicitly request Notification permission from user
+    if ("Notification" in window) {
+      let permission = Notification.permission;
+      if (permission === "default") {
+        permission = await Notification.requestPermission();
+      }
+      if (permission !== "granted") {
+        throw new Error("Notification permission was denied. Please allow notifications in your browser's site settings.");
+      }
+    }
+
+    // 2. Ensure Service Worker is registered and active
     if (!this.swRegistration) {
       await this.init();
     }
-    if (!this.swRegistration) {
-      throw new Error("Service Worker is not available.");
-    }
+    const reg = await navigator.serviceWorker.ready;
+    this.swRegistration = reg;
 
-    // 1. Fetch server's VAPID public key
+    // 3. Fetch server's VAPID public key
     const { public_key } = await Api.getVapidPublicKey();
     const applicationServerKey = this.urlBase64ToUint8Array(public_key);
 
-    // 2. Request browser permission and subscribe via pushManager
-    const sub = await this.swRegistration.pushManager.subscribe({
+    // 4. Request browser push subscription
+    const sub = await reg.pushManager.subscribe({
       userVisibleOnly: true,
       applicationServerKey,
     });
     this.subscription = sub;
 
-    // 3. Serialize and send to Tier 2 Server
+    // 5. Serialize and register endpoint on Tier 2 Server
     const subJson = sub.toJSON();
     const payload = {
       endpoint: subJson.endpoint,

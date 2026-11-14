@@ -41,6 +41,10 @@ class ServerSettings:
         self.topic_alert: str = os.getenv("MQTT_TOPIC_ALERT", mqtt_cfg.get("topic_alert", "motor/alert"))
         self.topic_config: str = os.getenv("MQTT_TOPIC_CONFIG", mqtt_cfg.get("topic_config", "motor/config/threshold"))
         self.topic_sensor_config: str = os.getenv("MQTT_TOPIC_SENSOR_CONFIG", mqtt_cfg.get("topic_sensor_config", "motor/config/sensor"))
+        self.topic_model_config: str = os.getenv("MQTT_TOPIC_MODEL_CONFIG", mqtt_cfg.get("topic_model_config", "motor/config/model"))
+
+        # Model settings
+        self.default_model: str = os.getenv("ACTIVE_MODEL", "unsupervised")
 
         # Sensor settings
         sensor_cfg = raw_cfg.get("sensor", {})

@@ -82,3 +82,14 @@ class TestMockSensor:
         sensor = MockSensor.from_npy(path, sample_rate=SAMPLE_RATE)
         window = sensor.get_10s_window()
         assert len(window) == WINDOW_SIZE
+
+    def test_dynamic_mock_sensor_alternates(self):
+        from hal.mock_sensor import create_dynamic_mock_sensor
+        sensor = create_dynamic_mock_sensor(cwru_dir="data/cwru", sample_rate=12_000, fault_every_n=3)
+        assert sensor.dynamic_mode is True
+        w1 = sensor.get_10s_window()
+        assert w1.shape == (120_000,)
+        w2 = sensor.get_10s_window()
+        assert w2.shape == (120_000,)
+        w3 = sensor.get_10s_window()
+        assert w3.shape == (120_000,)

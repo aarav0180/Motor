@@ -142,3 +142,29 @@ class TestMQTTBridgeIngestion:
             ws_data = mock_ws.call_args[0][0]
             assert ws_data["type"] == "CONFIG_UPDATE"
             assert ws_data["data"]["sensor_mode"] == "physical"
+
+    @patch("paho.mqtt.client.Client")
+    def test_publish_model_mode_update_sends_to_edge(self, mock_client_cls):
+        mock_client = MagicMock()
+        mock_client_cls.return_value = mock_client
+
+        bridge = MQTTBridge()
+        bridge._connected = True
+
+        with patch("server.ws_manager.ws_manager.broadcast_sync") as mock_ws:
+            success = bridge.publish_model_mode_update(model="supervised", reason="test_toggle")
+            assert success is True
+
+            # Verify MQTT publish
+            assert mock_client.publish.called
+            topic, payload_str = mock_client.publish.call_args[0]
+            assert topic == bridge.topic_model_config
+            data = json.loads(payload_str)
+            assert data["model"] == "supervised"
+            assert data["reason"] == "test_toggle"
+
+            # Verify WebSocket broadcast to dashboards
+            assert mock_ws.called
+            ws_data = mock_ws.call_args[0][0]
+            assert ws_data["type"] == "CONFIG_UPDATE"
+            assert ws_data["data"]["active_model"] == "supervised"

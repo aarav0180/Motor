@@ -17,7 +17,9 @@ def setup_test_environment(tmp_path):
     db_file = str(tmp_path / "client_test.db")
     settings.database_path = db_file
     init_db(db_file)
-    with patch("server.mqtt_bridge.mqtt_bridge.start"), patch("server.mqtt_bridge.mqtt_bridge.stop"):
+    with patch("server.main.mqtt_bridge.start"), patch("server.main.mqtt_bridge.stop"), \
+         patch("server.mqtt_bridge.mqtt_bridge.start"), patch("server.mqtt_bridge.mqtt_bridge.stop"), \
+         patch("server.main.mock_streamer.start"), patch("server.main.mock_streamer.stop"):
         yield db_file
 
 

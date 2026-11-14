@@ -61,27 +61,13 @@ def build_sensor(cfg: dict, force_mock: bool = False) -> VibrationSensor:
                 simulate_delay=cfg.get("simulate_delay", False),
                 label="mock",
             )
-        try:
-            from data.pipeline import DataPipeline, DataMode
-            pipeline = DataPipeline(mode=DataMode.MOCK)
-            pipeline.setup()
-            return pipeline.get_sensor()
-        except Exception:
-            logger.warning(
-                "Neither mock_data_path (%s) nor CWRU dataset available; "
-                "using synthetic 10 s healthy signal for testing.",
-                data_path,
-            )
-            # Generate 60 seconds of synthetic healthy signal
-            fs = cfg.get("sample_rate", 1000)
-            t = np.linspace(0, 60, fs * 60, endpoint=False)
-            synthetic = (np.sin(2 * np.pi * 40.0 * t) + 0.1 * np.random.randn(len(t))).astype(np.float32)
-            return MockSensor(
-                data=synthetic,
-                sample_rate=fs,
-                simulate_delay=cfg.get("simulate_delay", False),
-                label="synthetic_healthy",
-            )
+        from hal.mock_sensor import create_dynamic_mock_sensor
+        return create_dynamic_mock_sensor(
+            cwru_dir=cfg.get("cwru_dir", "data/cwru"),
+            sample_rate=cfg.get("sample_rate", 12_000),
+            simulate_delay=cfg.get("simulate_delay", False),
+            fault_every_n=cfg.get("fault_every_n", 4),
+        )
     return PhysicalSensor(
         bus_num=cfg.get("bus", 1),
         address=int(cfg.get("address", "0x53"), 16)
@@ -166,6 +152,7 @@ class MonitorService:
         )
         topic_config = self.cfg.get("mqtt", {}).get("topic_config", "motor/config/threshold")
         topic_sensor_config = self.cfg.get("mqtt", {}).get("topic_sensor_config", "motor/config/sensor")
+        topic_model_config = self.cfg.get("mqtt", {}).get("topic_model_config", "motor/config/model")
         self.publisher = MQTTPublisher(
             broker=self.cfg["mqtt"]["broker"],
             port=self.cfg["mqtt"].get("port", 1883),
@@ -173,11 +160,13 @@ class MonitorService:
             topic_alert=self.cfg["mqtt"]["topic_alert"],
             topic_config=topic_config,
             topic_sensor_config=topic_sensor_config,
+            topic_model_config=topic_model_config,
             username=self.cfg.get("mqtt", {}).get("username"),
             password=self.cfg.get("mqtt", {}).get("password"),
             use_tls=bool(self.cfg.get("mqtt", {}).get("use_tls", False)),
             on_config_message=self._handle_remote_config,
             on_sensor_config_message=self._handle_sensor_config,
+            on_model_config_message=self._handle_model_config,
         )
         self._running = False
 
@@ -242,6 +231,34 @@ class MonitorService:
                 "Failed to switch sensor mode to '%s' (%s). Retaining current sensor.",
                 mode, exc,
             )
+            return False
+
+    def _handle_model_config(self, payload: dict) -> None:
+        """Handle remote model selection switch ('unsupervised' vs 'supervised') from Server/Web UI."""
+        if not isinstance(payload, dict):
+            return
+        model = payload.get("model") or payload.get("active_model")
+        if model:
+            self.set_model_mode(str(model))
+
+    def set_model_mode(self, model: str) -> bool:
+        """
+        Hot-swap active detector between Unsupervised Autoencoder and Supervised Classifier.
+        """
+        model = model.lower().strip()
+        logger.info("Switching detector model to '%s'...", model)
+        try:
+            if model in ("supervised", "classifier", "advanced_classifier"):
+                target_detector = "advanced_classifier"
+            else:
+                target_detector = "unsupervised_autoencoder"
+
+            self.cfg.setdefault("detector", {})["active"] = target_detector
+            self.detector = build_detector(self.cfg["detector"])
+            logger.info("Successfully hot-swapped detector to '%s'.", target_detector)
+            return True
+        except Exception as exc:
+            logger.error("Failed to switch detector model to '%s' (%s). Retaining current detector.", model, exc)
             return False
 
     def run(self) -> None:
