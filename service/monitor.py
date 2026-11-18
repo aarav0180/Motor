@@ -102,12 +102,12 @@ def build_detector(cfg: dict) -> BaseDetector:
         raise FileNotFoundError(f"Model not found: {path}.  Run training first.")
 
     if name in ("unsupervised_autoencoder", "unsupervised_xiong"):
-        model_path = cfg.get("model_path", "models/cwru_unsupervised_xiong_edge.pt")
-        thresh = float(threshold) if threshold is not None else 0.05
+        model_path = cfg.get("unsupervised_path", cfg.get("model_path", "models/cwru_unsupervised_xiong_edge.pt"))
+        thresh = float(threshold) if threshold is not None else 0.08
         return CWRUUnsupervisedDetector(model_path=model_path, threshold=thresh)
 
     if name in ("advanced_classifier", "classifier"):
-        model_path = cfg.get("model_path", "models/cwru_advanced_edge.pt")
+        model_path = cfg.get("classifier_path", "models/cwru_advanced_edge.pt")
         thresh = float(threshold) if threshold is not None else 0.50
         return CWRUAdvancedClassifierDetector(model_path=model_path, threshold=thresh)
 
@@ -248,13 +248,16 @@ class MonitorService:
         model = model.lower().strip()
         logger.info("Switching detector model to '%s'...", model)
         try:
+            detector_cfg = self.cfg.setdefault("detector", {})
             if model in ("supervised", "classifier", "advanced_classifier"):
                 target_detector = "advanced_classifier"
+                detector_cfg["model_path"] = detector_cfg.get("classifier_path", "models/cwru_advanced_edge.pt")
             else:
                 target_detector = "unsupervised_autoencoder"
+                detector_cfg["model_path"] = detector_cfg.get("unsupervised_path", "models/cwru_unsupervised_xiong_edge.pt")
 
-            self.cfg.setdefault("detector", {})["active"] = target_detector
-            self.detector = build_detector(self.cfg["detector"])
+            detector_cfg["active"] = target_detector
+            self.detector = build_detector(detector_cfg)
             logger.info("Successfully hot-swapped detector to '%s'.", target_detector)
             return True
         except Exception as exc:

@@ -109,6 +109,8 @@ class CWRUUnsupervisedDetector(BaseDetector):
     def predict(self, feature: Dict[str, Any]) -> Tuple[float, str]:
         s = self.score(feature)
         label = LABEL_ANOMALY if s > self.threshold else LABEL_NORMAL
+        feature["diagnosis"] = "healthy" if label == LABEL_NORMAL else "anomaly"
+        feature["diagnosis_confidence"] = float(round(min(1.0, s / max(self.threshold, 1e-4)), 4)) if label == LABEL_ANOMALY else 0.95
         return s, label
 
     def save(self, path: str) -> None:
@@ -178,8 +180,8 @@ class CWRUAdvancedClassifierDetector(BaseDetector):
             "class_id": pred_class,
             "label": CWRU_CLASSES.get(pred_class, "unknown"),
             "confidence": float(round(probs[pred_class], 4)),
-            "anomaly_prob": float(round(1.0 - probs[0], 4)),
-            "probabilities": {CWRU_CLASSES[i]: float(round(p, 4)) for i, p in enumerate(probs)},
+            "anomaly_prob": float(round(1.0 - probs[0], 4)) if len(probs) > 0 else 0.0,
+            "probabilities": {CWRU_CLASSES.get(i, f"class_{i}"): float(round(p, 4)) for i, p in enumerate(probs)},
         }
 
     def score(self, feature: Dict[str, Any]) -> float:
@@ -189,6 +191,8 @@ class CWRUAdvancedClassifierDetector(BaseDetector):
 
     def predict(self, feature: Dict[str, Any]) -> Tuple[float, str]:
         diag = self.diagnose(feature)
+        feature["diagnosis"] = diag["label"]
+        feature["diagnosis_confidence"] = diag["confidence"]
         score = diag["anomaly_prob"]
         label = LABEL_NORMAL if diag["class_id"] == 0 else LABEL_ANOMALY
         return score, label
