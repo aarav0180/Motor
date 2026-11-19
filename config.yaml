@@ -4,6 +4,8 @@ sensor:
   bus: 1                           # I2C bus number (Raspberry Pi = 1)
   address: "0x53"                  # ADXL345 default; MPU6050 use "0x68"
   sample_rate: 1000                # Target Hz (measure actual rate on the Pi!)
+  axis: magnitude                  # 'magnitude' (3-axis dynamic vector) | 'x' | 'y' | 'z'
+  range_g: 16                      # 2, 4, 8, or 16 g range to prevent saturation
   mock_data_path: data/raw/healthy_sample.npy  # used when type=mock
   simulate_delay: false            # true to slow mock down to real-time
 

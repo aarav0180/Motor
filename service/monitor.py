@@ -74,6 +74,8 @@ def build_sensor(cfg: dict, force_mock: bool = False) -> VibrationSensor:
                 if isinstance(cfg.get("address"), str)
                 else cfg.get("address", 0x53),
         sample_rate=cfg.get("sample_rate", 1000),
+        axis=cfg.get("axis", "magnitude"),
+        range_g=int(cfg.get("range_g", 16)),
     )
 
 
