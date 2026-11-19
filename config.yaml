@@ -20,9 +20,9 @@ detector:
   active: unsupervised_autoencoder     # rms_threshold | isolation_forest | autoencoder | unsupervised_autoencoder | advanced_classifier | hybrid_edge
   alert_threshold: 0.08                # calibrated baseline threshold (0.08 for unsupervised MSE)
   models_dir: detectors/saved
-  model_path: models/cwru_unsupervised_xiong_edge.pt
-  unsupervised_path: models/cwru_unsupervised_xiong_edge.pt
-  classifier_path: models/cwru_advanced_edge.pt
+  model_path: models/best_anomaly_model.pt
+  unsupervised_path: models/best_anomaly_model.pt
+  classifier_path: models/best_multiclass_model.pt
 
 # Feature extraction
 features:

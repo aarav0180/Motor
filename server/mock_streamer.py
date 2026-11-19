@@ -79,20 +79,20 @@ class MockEdgeStreamer:
 
             try:
                 self._unsup_detector = CWRUUnsupervisedDetector(
-                    model_path="models/cwru_unsupervised_xiong_edge.pt",
+                    model_path="models/best_anomaly_model.pt",
                     threshold=self.active_threshold,
                 )
             except Exception as exc:
-                logger.warning("Could not load unsupervised model (%s); using fallback scoring.", exc)
+                logger.warning("Could not load anomaly model (%s); using fallback scoring.", exc)
                 self._unsup_detector = None
 
             try:
                 self._super_detector = CWRUAdvancedClassifierDetector(
-                    model_path="models/cwru_advanced_edge.pt",
+                    model_path="models/best_multiclass_model.pt",
                     threshold=0.50,
                 )
             except Exception as exc:
-                logger.warning("Could not load supervised model (%s); using fallback scoring.", exc)
+                logger.warning("Could not load multiclass model (%s); using fallback scoring.", exc)
                 self._super_detector = None
 
             logger.info("MockEdgeStreamer initialized models & dynamic CWRU sensor.")
@@ -240,15 +240,15 @@ class MockEdgeStreamer:
                 if self.active_model == "supervised" and self._super_detector is not None:
                     feat.update(self._super_detector.prepare_feature(window))
                     score, label = self._super_detector.predict(feat)
-                    detector_name = "advanced_classifier"
+                    detector_name = "multiclass_classifier"
                     diagnosis = feat.get("diagnosis", "healthy" if label == "normal" else "inner_race_fault")
                     confidence = float(feat.get("diagnosis_confidence", 0.98 if label == "anomaly" else 0.95))
                 elif self._unsup_detector is not None:
                     feat.update(self._unsup_detector.prepare_feature(window))
                     score, label = self._unsup_detector.predict(feat)
-                    detector_name = "unsupervised_autoencoder"
-                    diagnosis = self._sensor.current_label if label == "anomaly" else "healthy"
-                    confidence = float(min(1.0, score / max(self.active_threshold, 1e-4))) if label == "anomaly" else 0.95
+                    detector_name = "anomaly_detector"
+                    diagnosis = feat.get("diagnosis", "healthy" if label == "normal" else "anomaly")
+                    confidence = float(feat.get("diagnosis_confidence", min(1.0, score / max(self.active_threshold, 1e-4)) if label == "anomaly" else 0.95))
                 else:
                     # Synthetic fallback scoring based on RMS & Kurtosis
                     rms = float(feat.get("rms", 0.1))

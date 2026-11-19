@@ -25,6 +25,8 @@ from service.monitor import build_detector, MonitorService
 MODELS_DIR = Path("models")
 UNSUP_PATH = MODELS_DIR / "cwru_unsupervised_xiong_edge.pt"
 ADV_PATH = MODELS_DIR / "cwru_advanced_edge.pt"
+BEST_ANOM_PATH = MODELS_DIR / "best_anomaly_model.pt"
+BEST_MULTI_PATH = MODELS_DIR / "best_multiclass_model.pt"
 
 
 def _load_cwru_sample(mat_name: str) -> np.ndarray:
@@ -78,6 +80,28 @@ class TestCWRUUnsupervisedDetector:
         new_score, new_label = det.predict(feat)
         assert new_label == "normal"
 
+    def test_best_anomaly_model_healthy_vs_anomaly(self):
+        if not BEST_ANOM_PATH.exists():
+            pytest.skip("best_anomaly_model.pt not present")
+        det = CWRUUnsupervisedDetector(model_path=BEST_ANOM_PATH, threshold=0.08)
+        assert det._is_dict_model is True
+
+        # Healthy: 97.mat -> score < 0.08, label normal, only tells healthy
+        sig_h = _load_cwru_sample("97.mat")[:1000]
+        feat_h = det.prepare_feature(sig_h)
+        score_h, label_h = det.predict(feat_h)
+        assert score_h < 0.08
+        assert label_h == "normal"
+        assert feat_h["diagnosis"] == "healthy"
+
+        # Anomaly: 105.mat -> score > 0.08, label anomaly, only tells anomaly (no defect breakdown)
+        sig_f = _load_cwru_sample("105.mat")[:1000]
+        feat_f = det.prepare_feature(sig_f)
+        score_f, label_f = det.predict(feat_f)
+        assert score_f > 0.08
+        assert label_f == "anomaly"
+        assert feat_f["diagnosis"] == "anomaly"
+
 
 class TestCWRUAdvancedClassifierDetector:
     def test_init_and_load(self):
@@ -120,6 +144,33 @@ class TestCWRUAdvancedClassifierDetector:
         sig_fault = _load_cwru_sample("105.mat")[:12000]
         score, label = det.predict(det.prepare_feature(sig_fault))
         assert label == "anomaly"
+
+    def test_best_multiclass_model_identifies_fault_and_defect_type(self):
+        if not BEST_MULTI_PATH.exists():
+            pytest.skip("best_multiclass_model.pt not present")
+        det = CWRUAdvancedClassifierDetector(model_path=BEST_MULTI_PATH)
+        assert det._is_dict_model is True
+
+        # Healthy: 97.mat
+        sig_h = _load_cwru_sample("97.mat")[:1000]
+        feat_h = det.prepare_feature(sig_h)
+        score_h, label_h = det.predict(feat_h)
+        assert label_h == "normal"
+        assert feat_h["diagnosis"] == "healthy"
+
+        # Inner Race Fault: 105.mat (gives fault AND what the fault is)
+        sig_ir = _load_cwru_sample("105.mat")[:1000]
+        feat_ir = det.prepare_feature(sig_ir)
+        score_ir, label_ir = det.predict(feat_ir)
+        assert label_ir == "anomaly"
+        assert "inner_race_fault" in feat_ir["diagnosis"]
+
+        # Ball Fault: 118.mat (gives fault AND what the fault is)
+        sig_ball = _load_cwru_sample("118.mat")[:1000]
+        feat_ball = det.prepare_feature(sig_ball)
+        score_ball, label_ball = det.predict(feat_ball)
+        assert label_ball == "anomaly"
+        assert "ball_fault" in feat_ball["diagnosis"]
 
 
 class TestCWRUHybridDetector:

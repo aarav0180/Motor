@@ -101,20 +101,20 @@ def build_detector(cfg: dict) -> BaseDetector:
             return AutoencoderDetector.load(str(path))
         raise FileNotFoundError(f"Model not found: {path}.  Run training first.")
 
-    if name in ("unsupervised_autoencoder", "unsupervised_xiong"):
-        model_path = cfg.get("unsupervised_path", cfg.get("model_path", "models/cwru_unsupervised_xiong_edge.pt"))
+    if name in ("unsupervised_autoencoder", "unsupervised_xiong", "anomaly_model", "anomaly"):
+        model_path = cfg.get("unsupervised_path", cfg.get("model_path", "models/best_anomaly_model.pt"))
         thresh = float(threshold) if threshold is not None else 0.08
         return CWRUUnsupervisedDetector(model_path=model_path, threshold=thresh)
 
-    if name in ("advanced_classifier", "classifier"):
-        model_path = cfg.get("classifier_path", "models/cwru_advanced_edge.pt")
+    if name in ("advanced_classifier", "classifier", "multiclass", "multiclass_model"):
+        model_path = cfg.get("classifier_path", cfg.get("model_path", "models/best_multiclass_model.pt"))
         thresh = float(threshold) if threshold is not None else 0.50
         return CWRUAdvancedClassifierDetector(model_path=model_path, threshold=thresh)
 
     if name in ("hybrid", "hybrid_edge"):
-        unsup_path = cfg.get("unsupervised_path", "models/cwru_unsupervised_xiong_edge.pt")
-        cls_path = cfg.get("classifier_path", "models/cwru_advanced_edge.pt")
-        thresh = float(threshold) if threshold is not None else 0.05
+        unsup_path = cfg.get("unsupervised_path", "models/best_anomaly_model.pt")
+        cls_path = cfg.get("classifier_path", "models/best_multiclass_model.pt")
+        thresh = float(threshold) if threshold is not None else 0.08
         return CWRUHybridDetector(
             unsupervised_path=unsup_path,
             classifier_path=cls_path,
@@ -249,12 +249,12 @@ class MonitorService:
         logger.info("Switching detector model to '%s'...", model)
         try:
             detector_cfg = self.cfg.setdefault("detector", {})
-            if model in ("supervised", "classifier", "advanced_classifier"):
+            if model in ("supervised", "classifier", "advanced_classifier", "multiclass"):
                 target_detector = "advanced_classifier"
-                detector_cfg["model_path"] = detector_cfg.get("classifier_path", "models/cwru_advanced_edge.pt")
+                detector_cfg["model_path"] = detector_cfg.get("classifier_path", "models/best_multiclass_model.pt")
             else:
                 target_detector = "unsupervised_autoencoder"
-                detector_cfg["model_path"] = detector_cfg.get("unsupervised_path", "models/cwru_unsupervised_xiong_edge.pt")
+                detector_cfg["model_path"] = detector_cfg.get("unsupervised_path", "models/best_anomaly_model.pt")
 
             detector_cfg["active"] = target_detector
             self.detector = build_detector(detector_cfg)

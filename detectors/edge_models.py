@@ -17,12 +17,13 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple, Union
 
 import numpy as np
+import scipy.stats
 
 from .base import BaseDetector, LABEL_NORMAL, LABEL_ANOMALY
 
 logger = logging.getLogger(__name__)
 
-# Canonical fault classes for CWRU Advanced 1D-CNN
+# Canonical fault classes for legacy CWRU Advanced 1D-CNN
 CWRU_CLASSES: Dict[int, str] = {
     0: "healthy",
     1: "ball_fault",
@@ -38,32 +39,77 @@ def _normalize_signal(sig: np.ndarray) -> np.ndarray:
     return (arr - float(np.mean(arr))) / (std + 1e-8)
 
 
+def extract_statistical_features(raw_window: np.ndarray) -> np.ndarray:
+    """
+    Extract the 9 statistical features expected by best_anomaly_model & best_multiclass_model:
+    ['max', 'min', 'mean', 'sd', 'rms', 'skewness', 'kurtosis', 'crest', 'form']
+    """
+    sig = np.asarray(raw_window, dtype=np.float64).flatten()
+    if len(sig) == 0:
+        return np.zeros((1, 9), dtype=np.float64)
+    mx = float(np.max(sig))
+    mn = float(np.min(sig))
+    mean = float(np.mean(sig))
+    sd = float(np.std(sig))
+    rms = float(np.sqrt(np.mean(sig ** 2)))
+    skew = float(scipy.stats.skew(sig))
+    kurt = float(scipy.stats.kurtosis(sig))
+    crest = float(np.max(np.abs(sig)) / (rms + 1e-8))
+    form = float(rms / (np.mean(np.abs(sig)) + 1e-8))
+    return np.array([mx, mn, mean, sd, rms, skew, kurt, crest, form], dtype=np.float64).reshape(1, -1)
+
+
 # ---------------------------------------------------------------------------
-# 1. Unsupervised Autoencoder (Trained strictly on healthy baseline data)
+# 1. Anomaly Detector (Tells strictly if motor is healthy or if it's not)
 # ---------------------------------------------------------------------------
 
 class CWRUUnsupervisedDetector(BaseDetector):
     """
-    TorchScript 1D-CNN Autoencoder for vibration anomaly detection.
-    Trained strictly on healthy operational data.
-    Anomaly score is the mean squared reconstruction error (MSE).
+    Vibration Anomaly Detector.
+    Supports:
+      1. Best Anomaly Model (Isolation Forest with StandardScaler checkpoint)
+      2. TorchScript 1D-CNN Autoencoder (MSE reconstruction)
+
+    Only tells whether the motor is healthy or anomalous (no defect breakdown).
     """
 
     def __init__(
         self,
-        model_path: Union[str, Path] = "models/cwru_unsupervised_xiong_edge.pt",
-        threshold: float = 0.05,
+        model_path: Union[str, Path] = "models/best_anomaly_model.pt",
+        threshold: float = 0.08,
     ) -> None:
         super().__init__(threshold=threshold)
         self.model_path = Path(model_path)
+        self._is_dict_model = False
+        self._clf = None
+        self._scaler = None
         self._model = None
         self._load_model()
         self._is_fitted = True
 
     def _load_model(self) -> None:
         import torch
+        import warnings
         if not self.model_path.exists():
             raise FileNotFoundError(f"Model file not found: {self.model_path}")
+
+        # 1. Try loading as dictionary checkpoint (best_anomaly_model.pt)
+        try:
+            with warnings.catch_warnings():
+                warnings.filterwarnings("ignore")
+                checkpoint = torch.load(str(self.model_path), map_location="cpu", weights_only=False)
+            if isinstance(checkpoint, dict) and "model" in checkpoint and "scaler" in checkpoint:
+                self._is_dict_model = True
+                self._clf = checkpoint["model"]
+                self._scaler = checkpoint["scaler"]
+                self._feature_names = checkpoint.get("feature_names", [])
+                logger.info("Loaded Isolation Forest Anomaly model from %s", self.model_path)
+                return
+        except Exception as exc:
+            logger.debug("Checkpoint dict load skipped (%s), trying TorchScript...", exc)
+
+        # 2. Fallback to TorchScript Autoencoder
+        self._is_dict_model = False
         self._model = torch.jit.load(str(self.model_path), map_location="cpu")
         self._model.eval()
         logger.info("Loaded TorchScript Unsupervised Autoencoder from %s", self.model_path)
@@ -82,19 +128,31 @@ class CWRUUnsupervisedDetector(BaseDetector):
         return self
 
     def prepare_feature(self, raw_window: np.ndarray) -> Dict[str, Any]:
-        """Attach raw waveform to feature dict for deep learning inference."""
+        """Attach raw waveform to feature dict for inference."""
         return {"raw_signal": np.asarray(raw_window, dtype=np.float32)}
 
     def score(self, feature: Dict[str, Any]) -> float:
-        """Calculate reconstruction MSE."""
-        import torch
+        """Calculate anomaly score."""
         if "raw_signal" not in feature:
             raise KeyError("Feature dict missing 'raw_signal'. Use prepare_feature(window).")
 
         raw = feature["raw_signal"]
-        norm_sig = _normalize_signal(raw)
 
-        # Truncate or use multiple of 1000 for perfect conv transpose alignment
+        # Isolation Forest scoring
+        if self._is_dict_model:
+            import warnings
+            feats = extract_statistical_features(raw)
+            with warnings.catch_warnings():
+                warnings.filterwarnings("ignore")
+                scaled = self._scaler.transform(feats)
+                dec = float(self._clf.decision_function(scaled)[0])
+            # In IsolationForest, negative decision indicates anomaly
+            score = float(round(max(0.0, -dec), 4))
+            return score
+
+        # TorchScript Autoencoder MSE
+        import torch
+        norm_sig = _normalize_signal(raw)
         L = len(norm_sig)
         if L % 1000 != 0 and L > 1000:
             norm_sig = norm_sig[: (L // 1000) * 1000]
@@ -109,47 +167,75 @@ class CWRUUnsupervisedDetector(BaseDetector):
     def predict(self, feature: Dict[str, Any]) -> Tuple[float, str]:
         s = self.score(feature)
         label = LABEL_ANOMALY if s > self.threshold else LABEL_NORMAL
+        # Anomaly model only tells if motor is healthy or if it's not
         feature["diagnosis"] = "healthy" if label == LABEL_NORMAL else "anomaly"
         feature["diagnosis_confidence"] = float(round(min(1.0, s / max(self.threshold, 1e-4)), 4)) if label == LABEL_ANOMALY else 0.95
         return s, label
 
     def save(self, path: str) -> None:
-        pass  # Model is managed as TorchScript .pt
+        pass
 
     @classmethod
-    def load(cls, path: str, threshold: float = 0.05) -> "CWRUUnsupervisedDetector":
+    def load(cls, path: str, threshold: float = 0.08) -> "CWRUUnsupervisedDetector":
         return cls(model_path=path, threshold=threshold)
 
 
 # ---------------------------------------------------------------------------
-# 2. Supervised 1D-CNN Fault Classifier (Diagnoses specific defect types)
+# 2. Multiclass Fault Classifier (Identifies fault AND exactly what the fault is)
 # ---------------------------------------------------------------------------
 
 class CWRUAdvancedClassifierDetector(BaseDetector):
     """
-    TorchScript 1D-CNN Multi-Class Classifier.
-    Diagnoses healthy vibration vs specific bearing defects:
-      - 0: healthy
-      - 1: ball_fault
-      - 2: inner_race_fault
-      - 3: outer_race_fault
+    Multiclass Fault Classifier.
+    Diagnoses healthy operation vs specific bearing defects:
+      - Healthy (Normal_1)
+      - Ball Faults (Ball_007_1, Ball_014_1, Ball_021_1)
+      - Inner Race Faults (IR_007_1, IR_014_1, IR_021_1)
+      - Outer Race Faults (OR_007_6_1, OR_014_6_1, OR_021_6_1)
     """
 
     def __init__(
         self,
-        model_path: Union[str, Path] = "models/cwru_advanced_edge.pt",
+        model_path: Union[str, Path] = "models/best_multiclass_model.pt",
         threshold: float = 0.50,
     ) -> None:
         super().__init__(threshold=threshold)
         self.model_path = Path(model_path)
+        self._is_dict_model = False
+        self._clf = None
+        self._scaler = None
+        self._label_encoder = None
+        self._power_transformer = None
+        self._use_power = False
         self._model = None
         self._load_model()
         self._is_fitted = True
 
     def _load_model(self) -> None:
         import torch
+        import warnings
         if not self.model_path.exists():
             raise FileNotFoundError(f"Model file not found: {self.model_path}")
+
+        # 1. Try loading as dictionary checkpoint (best_multiclass_model.pt)
+        try:
+            with warnings.catch_warnings():
+                warnings.filterwarnings("ignore")
+                checkpoint = torch.load(str(self.model_path), map_location="cpu", weights_only=False)
+            if isinstance(checkpoint, dict) and "model" in checkpoint and "scaler" in checkpoint:
+                self._is_dict_model = True
+                self._clf = checkpoint["model"]
+                self._scaler = checkpoint["scaler"]
+                self._label_encoder = checkpoint.get("label_encoder")
+                self._power_transformer = checkpoint.get("power_transformer")
+                self._use_power = checkpoint.get("use_power_transformer", False)
+                logger.info("Loaded Bagging Multiclass Classifier from %s", self.model_path)
+                return
+        except Exception as exc:
+            logger.debug("Checkpoint dict load skipped (%s), trying TorchScript...", exc)
+
+        # 2. Fallback to TorchScript Classifier
+        self._is_dict_model = False
         self._model = torch.jit.load(str(self.model_path), map_location="cpu")
         self._model.eval()
         logger.info("Loaded TorchScript Advanced Classifier from %s", self.model_path)
@@ -162,12 +248,69 @@ class CWRUAdvancedClassifierDetector(BaseDetector):
         return {"raw_signal": np.asarray(raw_window, dtype=np.float32)}
 
     def diagnose(self, feature: Dict[str, Any]) -> Dict[str, Any]:
-        """Return full diagnosis probabilities and predicted defect class."""
-        import torch
+        """Return full diagnosis probabilities and pinpoint exact defect type."""
         if "raw_signal" not in feature:
             raise KeyError("Feature dict missing 'raw_signal'. Use prepare_feature(window).")
 
         raw = feature["raw_signal"]
+
+        # Bagging Multiclass Model diagnosis
+        if self._is_dict_model:
+            import warnings
+            feats = extract_statistical_features(raw)
+            with warnings.catch_warnings():
+                warnings.filterwarnings("ignore")
+                scaled = self._scaler.transform(feats)
+                if self._use_power and self._power_transformer is not None:
+                    scaled = self._power_transformer.transform(scaled)
+
+                probs = self._clf.predict_proba(scaled)[0]
+            pred_idx = int(np.argmax(probs))
+            raw_cls = str(self._label_encoder.inverse_transform([pred_idx])[0])
+            confidence = float(round(probs[pred_idx], 4))
+
+            classes = list(self._label_encoder.classes_)
+            if "Normal_1" in classes:
+                norm_idx = classes.index("Normal_1")
+                anomaly_prob = float(round(1.0 - probs[norm_idx], 4))
+            else:
+                anomaly_prob = 0.0 if raw_cls.lower() == "normal" else 1.0
+
+            # Pinpoint exact defect name
+            if raw_cls == "Normal_1":
+                diag_label = "healthy"
+                is_fault = False
+            else:
+                is_fault = True
+                if raw_cls.startswith("Ball_"):
+                    depth = raw_cls.split("_")[1]
+                    diag_label = f"ball_fault ({depth} mil)"
+                elif raw_cls.startswith("IR_"):
+                    depth = raw_cls.split("_")[1]
+                    diag_label = f"inner_race_fault ({depth} mil)"
+                elif raw_cls.startswith("OR_"):
+                    parts = raw_cls.split("_")
+                    diag_label = f"outer_race_fault ({parts[1]} mil)"
+                else:
+                    diag_label = raw_cls.lower()
+
+            prob_dict = {
+                str(c): float(round(p, 4))
+                for c, p in zip(classes, probs)
+            }
+
+            return {
+                "class_id": pred_idx,
+                "label": diag_label,
+                "raw_class": raw_cls,
+                "is_fault": is_fault,
+                "confidence": confidence,
+                "anomaly_prob": anomaly_prob,
+                "probabilities": prob_dict,
+            }
+
+        # TorchScript fallback
+        import torch
         norm_sig = _normalize_signal(raw)
         x = torch.from_numpy(norm_sig).unsqueeze(0).unsqueeze(0)
 
@@ -179,6 +322,8 @@ class CWRUAdvancedClassifierDetector(BaseDetector):
         return {
             "class_id": pred_class,
             "label": CWRU_CLASSES.get(pred_class, "unknown"),
+            "raw_class": CWRU_CLASSES.get(pred_class, "unknown"),
+            "is_fault": (pred_class != 0),
             "confidence": float(round(probs[pred_class], 4)),
             "anomaly_prob": float(round(1.0 - probs[0], 4)) if len(probs) > 0 else 0.0,
             "probabilities": {CWRU_CLASSES.get(i, f"class_{i}"): float(round(p, 4)) for i, p in enumerate(probs)},
@@ -193,8 +338,10 @@ class CWRUAdvancedClassifierDetector(BaseDetector):
         diag = self.diagnose(feature)
         feature["diagnosis"] = diag["label"]
         feature["diagnosis_confidence"] = diag["confidence"]
+        feature["raw_class"] = diag.get("raw_class", diag["label"])
         score = diag["anomaly_prob"]
-        label = LABEL_NORMAL if diag["class_id"] == 0 else LABEL_ANOMALY
+        is_fault = diag.get("is_fault", diag["class_id"] != 0)
+        label = LABEL_ANOMALY if is_fault else LABEL_NORMAL
         return score, label
 
     def save(self, path: str) -> None:
@@ -212,15 +359,15 @@ class CWRUAdvancedClassifierDetector(BaseDetector):
 class CWRUHybridDetector(BaseDetector):
     """
     Two-stage production edge detector:
-      - Stage 1: Unsupervised Autoencoder checks for anomalies. If healthy, exit immediately.
-      - Stage 2: If anomaly flagged, run Advanced Classifier to pinpoint the exact defect.
+      - Stage 1: Anomaly Detector checks for anomalies. If healthy, exit immediately.
+      - Stage 2: If anomaly flagged, run Multiclass Classifier to pinpoint the exact defect.
     """
 
     def __init__(
         self,
-        unsupervised_path: Union[str, Path] = "models/cwru_unsupervised_xiong_edge.pt",
-        classifier_path: Union[str, Path] = "models/cwru_advanced_edge.pt",
-        threshold: float = 0.05,
+        unsupervised_path: Union[str, Path] = "models/best_anomaly_model.pt",
+        classifier_path: Union[str, Path] = "models/best_multiclass_model.pt",
+        threshold: float = 0.08,
     ) -> None:
         super().__init__(threshold=threshold)
         self.unsupervised = CWRUUnsupervisedDetector(model_path=unsupervised_path, threshold=threshold)
@@ -249,7 +396,7 @@ class CWRUHybridDetector(BaseDetector):
         return self.unsupervised.score(feature)
 
     def predict(self, feature: Dict[str, Any]) -> Tuple[float, str]:
-        mse, label = self.unsupervised.predict(feature)
+        score, label = self.unsupervised.predict(feature)
         if label == LABEL_ANOMALY:
             diag = self.classifier.diagnose(feature)
             # Annotate feature with deep diagnosis for MQTT alerts
@@ -257,8 +404,8 @@ class CWRUHybridDetector(BaseDetector):
             feature["diagnosis_confidence"] = diag["confidence"]
         else:
             feature["diagnosis"] = "healthy"
-            feature["diagnosis_confidence"] = 1.0 - mse
-        return mse, label
+            feature["diagnosis_confidence"] = float(round(1.0 - min(1.0, score), 4))
+        return score, label
 
     def save(self, path: str) -> None:
         pass
@@ -266,9 +413,9 @@ class CWRUHybridDetector(BaseDetector):
     @classmethod
     def load(
         cls,
-        unsupervised_path: str = "models/cwru_unsupervised_xiong_edge.pt",
-        classifier_path: str = "models/cwru_advanced_edge.pt",
-        threshold: float = 0.05,
+        unsupervised_path: str = "models/best_anomaly_model.pt",
+        classifier_path: str = "models/best_multiclass_model.pt",
+        threshold: float = 0.08,
     ) -> "CWRUHybridDetector":
         return cls(
             unsupervised_path=unsupervised_path,
